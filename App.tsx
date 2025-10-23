@@ -5,41 +5,61 @@
  * @format
  */
 
-import { NewAppScreen } from '@react-native/new-app-screen';
-import { StatusBar, StyleSheet, useColorScheme, View } from 'react-native';
+import { useEffect } from 'react';
 import {
-  SafeAreaProvider,
-  useSafeAreaInsets,
-} from 'react-native-safe-area-context';
+  NativeModules,
+  Platform,
+  StatusBar,
+  Text,
+  TouchableOpacity,
+  useColorScheme,
+  View,
+} from 'react-native';
+import Permission, { PERMISSIONS, RESULTS } from 'react-native-permissions';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 function App() {
   const isDarkMode = useColorScheme() === 'dark';
+  const { LocationModule } = NativeModules;
+
+  useEffect(() => {
+    startLocationLogger();
+  }, []);
+
+  const startLocationLogger = async () => {
+    const granted = await Permission.request(
+      Platform.OS == 'android'
+        ? PERMISSIONS.ANDROID.ACCESS_FINE_LOCATION
+        : PERMISSIONS.IOS.LOCATION_WHEN_IN_USE,
+    );
+
+    if (granted === RESULTS.GRANTED) {
+      LocationModule?.stopLogging();
+      const res = await LocationModule.startLogging(
+        'User123',
+        'Session45',
+        5000,
+      );
+      console.log(res);
+    } else {
+      console.warn('Location permission denied');
+    }
+  };
 
   return (
     <SafeAreaProvider>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-      <AppContent />
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <TouchableOpacity
+          onPress={() => {
+            LocationModule?.stopLogging();
+          }}
+        >
+          <Text>Stop</Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaProvider>
   );
 }
-
-function AppContent() {
-  const safeAreaInsets = useSafeAreaInsets();
-
-  return (
-    <View style={styles.container}>
-      <NewAppScreen
-        templateFileName="App.tsx"
-        safeAreaInsets={safeAreaInsets}
-      />
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-});
 
 export default App;
