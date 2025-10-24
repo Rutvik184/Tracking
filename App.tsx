@@ -22,10 +22,6 @@ function App() {
   const isDarkMode = useColorScheme() === 'dark';
   const { LocationModule } = NativeModules;
 
-  useEffect(() => {
-    startLocationLogger();
-  }, []);
-
   const startLocationLogger = async () => {
     const granted = await Permission.request(
       Platform.OS == 'android'
@@ -34,11 +30,10 @@ function App() {
     );
 
     if (granted === RESULTS.GRANTED) {
-      LocationModule?.stopLogging();
       const res = await LocationModule.startLogging(
         'User123',
         'Session45',
-        5000,
+        10000,
       );
       console.log(res);
     } else {
@@ -49,7 +44,21 @@ function App() {
   return (
     <SafeAreaProvider>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+      <View
+        style={{
+          flex: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+          rowGap: 10,
+        }}
+      >
+        <TouchableOpacity
+          onPress={() => {
+            startLocationLogger();
+          }}
+        >
+          <Text>Start</Text>
+        </TouchableOpacity>
         <TouchableOpacity
           onPress={() => {
             LocationModule?.stopLogging();

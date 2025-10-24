@@ -67,19 +67,8 @@ class LocationModule: RCTEventEmitter, CLLocationManagerDelegate {
     
     // MARK: - Send location to JS
     private func sendLocation(_ location: CLLocation) {
-        let now = Date()
-        if now.timeIntervalSince(lastSentTime) >= interval {
-            lastSentTime = now
-            
-            let body: [String: Any] = [
-                "arg1": arg1 ?? "",
-                "arg2": arg2 ?? "",
-                "lat": location.coordinate.latitude,
-                "lng": location.coordinate.longitude
-            ]
-                        
-            print("Location Sent -> Arg1: \(arg1 ?? ""), Arg2: \(arg2 ?? ""), Lat: \(location.coordinate.latitude), Lng: \(location.coordinate.longitude)")
-        }
+                  
+      print("Location Sent -> Arg1: \(arg1 ?? ""), Arg2: \(arg2 ?? ""), Lat: \(location.coordinate.latitude), Lng: \(location.coordinate.longitude)")
     }
     
     // MARK: - Background Task + Timer
@@ -93,6 +82,7 @@ class LocationModule: RCTEventEmitter, CLLocationManagerDelegate {
         DispatchQueue.main.async {
             self.timer = Timer.scheduledTimer(withTimeInterval: self.interval, repeats: true) { _ in
                 if let loc = self.locationManager?.location {
+                  print("Location Sent ->Lat: \(loc.coordinate.latitude), Lng: \(loc.coordinate.longitude)")
                     self.sendLocation(loc)
                 }
             }

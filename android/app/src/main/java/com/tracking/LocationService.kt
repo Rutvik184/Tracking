@@ -16,16 +16,28 @@ import androidx.core.app.NotificationCompat
 class LocationService : Service() {
 
     private lateinit var handler: Handler
-    private lateinit var runnable: Runnable
+    private var runnable: Runnable? = null
     private var locationManager: LocationManager? = null
+    private var activeListeners = mutableListOf<LocationListener>()
     private var arg1: String? = null
     private var arg2: String? = null
     private var arg3: Long = 1000L
+
+    companion object {
+        private var instance: LocationService? = null
+
+        fun stopServiceManually(context: Context) {
+            instance?.stopLogging()
+            val intent = Intent(context, LocationService::class.java)
+            context.stopService(intent)
+        }
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         handler = Handler(Looper.getMainLooper())
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
     }
@@ -37,15 +49,14 @@ class LocationService : Service() {
 
         startForegroundService()
         startLocationLoop(arg3)
-
         return START_STICKY
     }
 
     private fun startForegroundService() {
         val channelId = "LocationChannel"
         val channelName = "Location Background Service"
-
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_LOW)
             manager.createNotificationChannel(channel)
@@ -53,14 +64,14 @@ class LocationService : Service() {
 
         val notification = NotificationCompat.Builder(this, channelId)
             .setContentTitle("Location Active")
-            .setContentText("Logging location every 10 seconds")
+            .setContentText("Logging location every ${arg3 / 1000} seconds")
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .build()
 
         startForeground(1, notification)
     }
 
-    private fun startLocationLoop(arg3: Long) {
+    private fun startLocationLoop(interval: Long) {
         runnable = object : Runnable {
             override fun run() {
                 try {
@@ -69,32 +80,71 @@ class LocationService : Service() {
                             Manifest.permission.ACCESS_FINE_LOCATION
                         ) == PackageManager.PERMISSION_GRANTED
                     ) {
+                        val listener = object : LocationListener {
+                            override fun onLocationChanged(location: Location) {
+                                Log.d(
+                                    "LocationService",
+                                    "Arg1: $arg1, Arg2: $arg2, Interval: $interval, " +
+                                            "Lat: ${location.latitude}, Lng: ${location.longitude}"
+                                )
+                                // remove this listener once it receives a single update
+                                try {
+                                    locationManager?.removeUpdates(this)
+                                    activeListeners.remove(this)
+                                } catch (ex: Exception) {
+                                    Log.e("LocationService", "removeUpdates failed: ${ex.message}")
+                                }
+                            }
+                        }
+
+                        activeListeners.add(listener)
+
                         locationManager?.requestSingleUpdate(
                             LocationManager.GPS_PROVIDER,
-                            object : LocationListener {
-                                override fun onLocationChanged(location: Location) {
-                                    Log.d("LocationService",
-                                        "Arg1: $arg1, Arg2: $arg2, Arg3: $arg3, " +
-                                                "Lat: ${location.latitude}, Lng: ${location.longitude}"
-                                    )
-                                }
-                            },
+                            listener,
                             Looper.getMainLooper()
                         )
                     } else {
-                        Log.e("LocationService", "Location permission not granted")
+                        Log.e("LocationService", "Permission not granted")
                     }
                 } catch (e: Exception) {
                     Log.e("LocationService", "Error: ${e.message}")
                 }
-                handler.postDelayed(this, arg3)
+
+                handler.postDelayed(this, interval)
             }
         }
-        handler.post(runnable)
+        handler.post(runnable!!)
+    }
+
+    private fun stopLogging() {
+        Log.d("LocationService", "Stopping location updates")
+
+        // 1️⃣ Stop periodic runnable
+        runnable?.let {
+            handler.removeCallbacks(it)
+            runnable = null
+        }
+
+        // 2️⃣ Remove all active listeners
+        for (listener in activeListeners) {
+            try {
+                locationManager?.removeUpdates(listener)
+            } catch (e: Exception) {
+                Log.e("LocationService", "Error removing listener: ${e.message}")
+            }
+        }
+        activeListeners.clear()
+
+        // 3️⃣ Stop service
+        stopForeground(true)
+        stopSelf()
     }
 
     override fun onDestroy() {
-        handler.removeCallbacks(runnable)
+        Log.d("LocationService", "Service destroyed")
+        stopLogging()
+        instance = null
         super.onDestroy()
     }
 }

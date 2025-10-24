@@ -24,8 +24,9 @@ class LocationModule(private val reactContext: ReactApplicationContext) :
                 reactContext.startService(intent)
             }
 
-            promise.resolve("Background service started")
+            promise.resolve("Background location service started")
         } catch (e: Exception) {
+            Log.e("LocationModule", "Failed to start: ${e.message}")
             promise.reject("START_FAILED", e)
         }
     }
@@ -33,10 +34,10 @@ class LocationModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun stopLogging(promise: Promise) {
         try {
-            val intent = Intent(reactContext, LocationService::class.java)
-            reactContext.stopService(intent)
-            promise.resolve("Background service stopped")
+            LocationService.stopServiceManually(reactContext)
+            promise.resolve("Background location service stopped")
         } catch (e: Exception) {
+            Log.e("LocationModule", "Failed to stop: ${e.message}")
             promise.reject("STOP_FAILED", e)
         }
     }
