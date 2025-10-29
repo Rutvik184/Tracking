@@ -33,17 +33,18 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
-	<key>NSLocationWhenInUseUsageDescription</key>
-<string>We need your location to track your activity.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-<string>We need your location to track your activity.</string>
-<key>NSLocationAlwaysUsageDescription</key>
-<string>We need your location to track your activity even in background.</string>
+	<string>We need your location to track your activity.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>We need your location to track your activity even in background.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>We need your location to track your activity.</string>
 	<key>RCTNewArchEnabled</key>
 	<true/>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>
+		<string>fetch</string>
 	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>

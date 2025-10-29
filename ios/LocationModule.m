@@ -14,6 +14,7 @@
 RCT_EXTERN_METHOD(startLogging:(NSString *)arg1
                   arg2:(NSString *)arg2
                   interval:(nonnull NSNumber *)interval
+                  stopAfterMs:(nonnull NSNumber *)duration
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 RCT_EXTERN_METHOD(stopLogging:(RCTPromiseResolveBlock)resolve
