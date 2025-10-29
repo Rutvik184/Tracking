@@ -11,12 +11,13 @@ class LocationModule(private val reactContext: ReactApplicationContext) :
     override fun getName() = "LocationModule"
 
     @ReactMethod
-    fun startLogging(a1: String, a2: String, a3: Int, promise: Promise) {
+    fun startLogging(a1: String, a2: String, a3: Int, a4: Int, promise: Promise) {
         try {
             val intent = Intent(reactContext, LocationService::class.java)
             intent.putExtra("arg1", a1)
             intent.putExtra("arg2", a2)
             intent.putExtra("arg3", a3.toLong())
+            intent.putExtra("arg4", a4.toLong())
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 reactContext.startForegroundService(intent)

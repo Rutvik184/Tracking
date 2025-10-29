@@ -33,7 +33,8 @@ function App() {
       const res = await LocationModule.startLogging(
         'User123',
         'Session45',
-        10000,
+        5000,
+        60000,
       );
       console.log(res);
     } else {

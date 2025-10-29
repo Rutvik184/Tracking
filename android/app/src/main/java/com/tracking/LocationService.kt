@@ -15,13 +15,18 @@ import androidx.core.app.NotificationCompat
 
 class LocationService : Service() {
 
-    private lateinit var handler: Handler
-    private var runnable: Runnable? = null
+    private lateinit var workHandler: Handler
+    private lateinit var handlerThread: HandlerThread
+    private var stopHandler: Handler? = null
+    private var stopRunnable: Runnable? = null
     private var locationManager: LocationManager? = null
-    private var activeListeners = mutableListOf<LocationListener>()
+    private var locationListener: LocationListener? = null
+
     private var arg1: String? = null
     private var arg2: String? = null
-    private var arg3: Long = 1000L
+    private var interval: Long = 1000L
+    private var stopAfterMs: Long = 0L
+    private var isRunning = false
 
     companion object {
         private var instance: LocationService? = null
@@ -38,33 +43,45 @@ class LocationService : Service() {
     override fun onCreate() {
         super.onCreate()
         instance = this
-        handler = Handler(Looper.getMainLooper())
+        handlerThread = HandlerThread("LocationThread", Process.THREAD_PRIORITY_BACKGROUND)
+        handlerThread.start()
+        workHandler = Handler(handlerThread.looper)
+        stopHandler = Handler(Looper.getMainLooper())
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (isRunning) {
+            Log.d("LocationService", "Already running, ignoring duplicate start")
+            return START_NOT_STICKY
+        }
+
+        isRunning = true
         arg1 = intent?.getStringExtra("arg1")
         arg2 = intent?.getStringExtra("arg2")
-        arg3 = intent?.getLongExtra("arg3", 1000L) ?: 1000L
+        interval = intent?.getLongExtra("arg3", 1000L) ?: 1000L
+        stopAfterMs = intent?.getLongExtra("arg4", 0L) ?: 0L
 
         startForegroundService()
-        startLocationLoop(arg3)
-        return START_STICKY
+        startLocationLoop(interval)
+
+        if (stopAfterMs > 0) scheduleStop(stopAfterMs)
+
+        return START_NOT_STICKY
     }
 
     private fun startForegroundService() {
         val channelId = "LocationChannel"
-        val channelName = "Location Background Service"
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_LOW)
+            val channel = NotificationChannel(channelId, "Location Tracking", NotificationManager.IMPORTANCE_LOW)
             manager.createNotificationChannel(channel)
         }
 
         val notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("Location Active")
-            .setContentText("Logging location every ${arg3 / 1000} seconds")
+            .setContentTitle("Tracking Location")
+            .setContentText("Interval: ${interval / 1000}s")
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .build()
 
@@ -72,71 +89,59 @@ class LocationService : Service() {
     }
 
     private fun startLocationLoop(interval: Long) {
-        runnable = object : Runnable {
-            override fun run() {
-                try {
-                    if (ActivityCompat.checkSelfPermission(
-                            this@LocationService,
-                            Manifest.permission.ACCESS_FINE_LOCATION
-                        ) == PackageManager.PERMISSION_GRANTED
-                    ) {
-                        val listener = object : LocationListener {
-                            override fun onLocationChanged(location: Location) {
-                                Log.d(
-                                    "LocationService",
-                                    "Arg1: $arg1, Arg2: $arg2, Interval: $interval, " +
-                                            "Lat: ${location.latitude}, Lng: ${location.longitude}"
-                                )
-                                // remove this listener once it receives a single update
-                                try {
-                                    locationManager?.removeUpdates(this)
-                                    activeListeners.remove(this)
-                                } catch (ex: Exception) {
-                                    Log.e("LocationService", "removeUpdates failed: ${ex.message}")
-                                }
-                            }
-                        }
-
-                        activeListeners.add(listener)
-
-                        locationManager?.requestSingleUpdate(
-                            LocationManager.GPS_PROVIDER,
-                            listener,
-                            Looper.getMainLooper()
-                        )
-                    } else {
-                        Log.e("LocationService", "Permission not granted")
-                    }
-                } catch (e: Exception) {
-                    Log.e("LocationService", "Error: ${e.message}")
-                }
-
-                handler.postDelayed(this, interval)
+        locationListener = object : LocationListener {
+            override fun onLocationChanged(location: Location) {
+                Log.d("LocationService", "📍 Lat: ${location.latitude}, Lng: ${location.longitude}, Arg1=$arg1, Arg2=$arg2")
             }
         }
-        handler.post(runnable!!)
+
+        val fetchLocation = object : Runnable {
+            override fun run() {
+                if (ActivityCompat.checkSelfPermission(this@LocationService, Manifest.permission.ACCESS_FINE_LOCATION)
+                    == PackageManager.PERMISSION_GRANTED
+                ) {
+                    locationManager?.requestSingleUpdate(LocationManager.GPS_PROVIDER, locationListener!!, handlerThread.looper)
+                }
+                workHandler.postDelayed(this, interval)
+            }
+        }
+
+        workHandler.post(fetchLocation)
+    }
+
+    private fun scheduleStop(duration: Long) {
+        stopRunnable?.let { stopHandler?.removeCallbacks(it) }
+
+        if (duration <= 0L) {
+            Log.d("LocationService", "No auto-stop scheduled (duration=$duration)")
+            return
+        }
+
+        stopRunnable = Runnable {
+            Log.d("LocationService", "⏱ Auto-stopping after $duration ms")
+            stopLogging()
+        }
+
+        stopHandler?.postDelayed(stopRunnable!!, duration)
+        Log.d("LocationService", "Auto-stop scheduled in ${duration / 1000} sec")
     }
 
     private fun stopLogging() {
-        Log.d("LocationService", "Stopping location updates")
+        if (!isRunning) return
 
-        // 1️⃣ Stop periodic runnable
-        runnable?.let {
-            handler.removeCallbacks(it)
-            runnable = null
-        }
+        isRunning = false
+        Log.d("LocationService", "🛑 Stopping location updates")
 
-        // 2️⃣ Remove all active listeners
-        for (listener in activeListeners) {
+        workHandler.removeCallbacksAndMessages(null)
+        stopHandler?.removeCallbacks(stopRunnable!!)
+        locationListener?.let {
             try {
-                locationManager?.removeUpdates(listener)
+                locationManager?.removeUpdates(it)
             } catch (e: Exception) {
-                Log.e("LocationService", "Error removing listener: ${e.message}")
+                Log.e("LocationService", "removeUpdates failed: ${e.message}")
             }
         }
-        activeListeners.clear()
 
-        // 3️⃣ Stop service
         stopForeground(true)
         stopSelf()
     }
@@ -144,6 +149,7 @@ class LocationService : Service() {
     override fun onDestroy() {
         Log.d("LocationService", "Service destroyed")
         stopLogging()
+        handlerThread.quitSafely()
         instance = null
         super.onDestroy()
     }
