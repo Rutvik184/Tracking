@@ -22,6 +22,7 @@ class LocationModule: RCTEventEmitter, CLLocationManagerDelegate {
                       arg2: String,
                       interval: NSNumber,
                       stopAfterMs: NSNumber,
+                      arg5: String,
                       resolver: @escaping RCTPromiseResolveBlock,
                       rejecter: @escaping RCTPromiseRejectBlock) {
 
@@ -29,6 +30,7 @@ class LocationModule: RCTEventEmitter, CLLocationManagerDelegate {
         self.arg2 = arg2
         self.interval = interval.doubleValue / 1000 // ms → sec
         self.stopAfter = stopAfterMs.doubleValue / 1000 // ms → sec
+        APIClient.shared.setBearerToken(arg5)
 
         locationManager = CLLocationManager()
         locationManager?.delegate = self
@@ -82,6 +84,27 @@ class LocationModule: RCTEventEmitter, CLLocationManagerDelegate {
           let timeString = formatter.string(from: Date())
 
           print("📤 [\(timeString)] Sent -> Arg1: \(arg1 ?? ""), Arg2: \(arg2 ?? ""), Lat: \(location.coordinate.latitude), Lng: \(location.coordinate.longitude)")
+      
+          guard let employeeId = Int(arg1 ?? "") else {
+              print("❌ Invalid employee ID")
+              return
+          }
+
+          let request = LocationRequest(
+              employee_id: employeeId,
+              lat_loc: location.coordinate.latitude,
+              long_loc: location.coordinate.longitude
+          )
+
+          // ✅ Call the API
+          LocationApi.shared.requestSendLocation(request: request) { result in
+              switch result {
+              case .success(let response):
+                  print("✅ API Success — id: \(response.id), saved: \(response.db_save)")
+              case .failure(let error):
+                  print("❌ API Error:", error.localizedDescription)
+              }
+          }
     }
 
     // MARK: - Background Task + Timer

@@ -30,11 +30,19 @@ function App() {
     );
 
     if (granted === RESULTS.GRANTED) {
+      /** Start Logging
+       * param 1: userId
+       * param 2: sessionId
+       * param 3: locationInterval in ms
+       * param 4: auto stop in ms
+       * param 5: jwtToken
+       */
       const res = await LocationModule.startLogging(
-        'User123',
+        '123',
         'Session45',
-        5000,
-        0,
+        10000,
+        60000,
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0b2tlbl90eXBlIjoiYWNjZXNzIiwiZXhwIjoxNzY5NDk3NjQ5LCJpYXQiOjE3NjE3MjE2NDksImp0aSI6ImFjMThkOWE1YzY3NTQ4MTJiMzM3ZWI3OWExODJjMjc0IiwidXNlcl9pZCI6NTk0fQ.yO3cgZy4y9Mggpuzh6VrKAfsdoxvgtohEozkpQWfJ5U',
       );
       console.log(res);
     } else {

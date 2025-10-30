@@ -12,6 +12,10 @@ import android.os.*
 import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
+import com.tracking.data.api.LocationApi
+import com.tracking.data.api.RetrofitClient
+import com.tracking.data.repository.LocationRepository
+import kotlinx.coroutines.*
 
 class LocationService : Service() {
 
@@ -27,14 +31,29 @@ class LocationService : Service() {
     private var interval: Long = 1000L
     private var stopAfterMs: Long = 0L
     private var isRunning = false
+    val locationApi = RetrofitClient.createService(LocationApi::class.java)
+    val locationRepo = LocationRepository(locationApi)
+    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     companion object {
         private var instance: LocationService? = null
 
         fun stopServiceManually(context: Context) {
-            instance?.stopLogging()
-            val intent = Intent(context, LocationService::class.java)
-            context.stopService(intent)
+            try {
+                if (instance != null) {
+                    Log.d("LocationService", "🧹 Stopping service manually...")
+                    instance?.stopLogging()
+                } else {
+                    Log.w("LocationService", "⚠️ Service instance is null — maybe not created or already stopped.")
+                }
+
+                val intent = Intent(context, LocationService::class.java)
+                val stopped = context.stopService(intent)
+                Log.d("LocationService", "stopService() returned: $stopped")
+
+            } catch (e: Exception) {
+                Log.e("LocationService", "❌ Error stopping service manually", e)
+            }
         }
     }
 
@@ -48,6 +67,7 @@ class LocationService : Service() {
         workHandler = Handler(handlerThread.looper)
         stopHandler = Handler(Looper.getMainLooper())
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -61,7 +81,7 @@ class LocationService : Service() {
         arg2 = intent?.getStringExtra("arg2")
         interval = intent?.getLongExtra("arg3", 1000L) ?: 1000L
         stopAfterMs = intent?.getLongExtra("arg4", 0L) ?: 0L
-
+        RetrofitClient.bearerToken = intent?.getStringExtra("arg5")
         startForegroundService()
         startLocationLoop(interval)
 
@@ -92,6 +112,11 @@ class LocationService : Service() {
         locationListener = object : LocationListener {
             override fun onLocationChanged(location: Location) {
                 Log.d("LocationService", "📍 Lat: ${location.latitude}, Lng: ${location.longitude}, Arg1=$arg1, Arg2=$arg2")
+                arg1?.let { user ->
+                    serviceScope.launch {
+                        locationRepo.requestSendLocation(Integer.parseInt(arg1!!), location.latitude, location.longitude)
+                    }
+                }
             }
         }
 
@@ -127,23 +152,48 @@ class LocationService : Service() {
     }
 
     private fun stopLogging() {
-        if (!isRunning) return
-
-        isRunning = false
-        Log.d("LocationService", "🛑 Stopping location updates")
-
-        workHandler.removeCallbacksAndMessages(null)
-        stopHandler?.removeCallbacks(stopRunnable!!)
-        locationListener?.let {
-            try {
-                locationManager?.removeUpdates(it)
-            } catch (e: Exception) {
-                Log.e("LocationService", "removeUpdates failed: ${e.message}")
-            }
+        if (!isRunning) {
+            Log.w("LocationService", "⚠️ stopLogging() called, but service not running.")
+            return
         }
 
-        stopForeground(true)
-        stopSelf()
+        isRunning = false
+
+        try {
+            // Stop periodic work
+            workHandler.removeCallbacksAndMessages(null)
+
+            // Cancel stop timer safely
+            stopRunnable?.let {
+                stopHandler?.removeCallbacks(it)
+                Log.d("LocationService", "✅ Stop timer removed")
+            }
+
+            // Remove location updates
+            locationListener?.let {
+                try {
+                    locationManager?.removeUpdates(it)
+                } catch (e: Exception) {
+                    Log.e("LocationService", "removeUpdates failed: ${e.message}")
+                }
+            }
+
+            // Stop foreground service and self
+            stopForeground(true)
+            stopSelf()
+
+            // Clear references
+            instance = null
+            stopRunnable = null
+            stopHandler = null
+            locationListener = null
+            locationManager = null
+
+            Log.d("LocationService", "✅ Service fully stopped")
+
+        } catch (e: Exception) {
+            Log.e("LocationService", "❌ Exception during stopLogging", e)
+        }
     }
 
     override fun onDestroy() {
